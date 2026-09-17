@@ -5,62 +5,59 @@ import (
 	"6.5840/kvsrv1/rpc"
 	"6.5840/labgob"
 	"6.5840/labrpc"
-	"6.5840/tester1"
-
+	tester "6.5840/tester1"
 )
 
 type KVServer struct {
 	me  int
 	rsm *rsm.RSM
 
-	// Your definitions here.
+	// 在这里添加你的定义。
 }
 
-// To type-cast req to the right type, take a look at Go's type switches or type
-// assertions below:
+// 要将 req 转换为正确的类型，可以参考下面 Go 的类型 switch 或类型断言：
 //
 // https://go.dev/tour/methods/16
 // https://go.dev/tour/methods/15
 func (kv *KVServer) DoOp(req any) any {
-	// Your code here
+	// 在这里编写你的代码
 	return nil
 }
 
 func (kv *KVServer) Snapshot() []byte {
-	// Your code here
+	// 在这里编写你的代码
 	return nil
 }
 
 func (kv *KVServer) Restore(data []byte) {
-	// Your code here
+	// 在这里编写你的代码
 }
 
 func (kv *KVServer) Get(args *rpc.GetArgs, reply *rpc.GetReply) {
-	// Your code here. Use kv.rsm.Submit() to submit args
-	// You can use go's type casts to turn the any return value
-	// of Submit() into a GetReply: rep.(rpc.GetReply)
+	// 在这里编写你的代码。使用 kv.rsm.Submit() 提交 args。
+	// 你可以使用 Go 的类型转换把 Submit() 返回的 any 值
+	// 转成 GetReply：rep.(rpc.GetReply)
 }
 
 func (kv *KVServer) Put(args *rpc.PutArgs, reply *rpc.PutReply) {
-	// Your code here. Use kv.rsm.Submit() to submit args
-	// You can use go's type casts to turn the any return value
-	// of Submit() into a PutReply: rep.(rpc.PutReply)
+	// 在这里编写你的代码。使用 kv.rsm.Submit() 提交 args。
+	// 你可以使用 Go 的类型转换把 Submit() 返回的 any 值
+	// 转成 PutReply：rep.(rpc.PutReply)
 }
 
-// StartKVServer() and MakeRSM() must return quickly, so they should
-// start goroutines for any long-running work.
+// StartKVServer() 和 MakeRSM() 必须快速返回，因此它们应该为任何
+// 长时间运行的工作启动 goroutine。
 func StartKVServer(servers []*labrpc.ClientEnd, gid tester.Tgid, me int, persister *tester.Persister, maxraftstate int) []any {
-	// call labgob.Register on structures you want
-	// Go's RPC library to marshall/unmarshall.
+	// 对希望 Go 的 RPC 库进行 marshall/unmarshall 的结构体
+	// 调用 labgob.Register。
 	labgob.Register(rsm.Op{})
 	labgob.Register(rpc.PutArgs{})
 	labgob.Register(rpc.GetArgs{})
 
 	kv := &KVServer{me: me}
 
-
 	kv.rsm = rsm.MakeRSM(servers, me, persister, maxraftstate, kv)
-	// You may need initialization code here.
+	// 你可能需要在这里添加初始化代码。
 	return []any{kv, kv.rsm.Raft()}
 }
 
