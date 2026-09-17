@@ -108,6 +108,7 @@ func (rsm *RSM) reader() {
 		rep := rsm.sm.DoOp(op.Command) // 每个已提交的命令都必须执行一次
 
 		if waiting {
+			// 把状态机执行的结果发送到通道
 			if op.Me == w.me && op.Id == w.id {
 				w.ch <- opResult{err: rpc.OK, rep: rep}
 			} else {
