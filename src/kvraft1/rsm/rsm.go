@@ -68,6 +68,12 @@ type RSM struct {
 	reqNum  int             // 已提交的请求计数，用于生成唯一 Id（调用时必须持有 mu）
 	pending map[int]*waiter // 日志下标 -> 等待该下标的 Submit
 	down    bool            // applyCh 已关闭，不再接受新的提交
+
+	// lastApplied 是状态机已经执行到的日志下标（0 表示还没执行过任何命令）。
+	// 它必须自己维护，不能用 rf.applyIndex 代替：raft 在把条目推进 applyCh
+	// 之前就把 applyIndex 抬到了这批条目的末尾，而 reader 可能还没执行到那里。
+	// 拿 raft 的下标去建快照，快照就会"声称包含"尚未执行的状态。
+	lastApplied int
 }
 
 // reader 是唯一读取 applyCh 的 goroutine，也是唯一调用 sm.DoOp 的地方。
@@ -90,8 +96,11 @@ func (rsm *RSM) reader() {
 			rsm.mu.Unlock()
 			return
 		}
+		if msg.SnapshotValid {
+			rsm.applySnapshot(msg)
+			continue
+		}
 		if !msg.CommandValid {
-			// 4C 的 SnapshotValid 分支加在这里。
 			continue
 		}
 		op, ok := msg.Command.(Op)
@@ -116,7 +125,65 @@ func (rsm *RSM) reader() {
 				w.ch <- opResult{err: rpc.ErrWrongLeader}
 			}
 		}
+
+		rsm.maybeSnapshot(msg.CommandIndex)
 	}
+}
+
+// applySnapshot 把 raft 经 applyCh 送来的快照应用到状态机。
+//
+// 到达这里的快照可以直接应用，不必担心它"滞后"：applier 是 applyCh 的唯一
+// 发送者，快照又优先于命令发送，而 InstallSnapshot 只在 LastIncludeIndex >
+// commitIndex 时才被接受——所以快照的下标一定大于此前送达的所有命令。即便如此
+// 仍保留一次下标比较：它是唯一能挡住"状态机被回滚"的防御，代价只是一个比较。
+//
+// 状态下机的锁由状态机自己加（sm.Restore 内部处理），这里绝不能持 rsm.mu
+// 调用它，理由和 DoOp 一样是 ABBA 死锁。
+func (rsm *RSM) applySnapshot(msg raftapi.ApplyMsg) {
+	rsm.mu.Lock()
+	stale := msg.SnapshotIndex <= rsm.lastApplied
+	rsm.mu.Unlock()
+	if stale {
+		return
+	}
+
+	rsm.sm.Restore(msg.Snapshot)
+
+	rsm.mu.Lock()
+	rsm.lastApplied = msg.SnapshotIndex
+	// 快照覆盖范围内的日志已经被丢弃，那些下标上再也不会出现命令，等它们的
+	// Submit 永远等不到结果。直接唤醒（cap 1 不会阻塞）。不唤醒也不会泄漏——
+	// 能走到这一步说明 leader 已经换过，Submit 的任期轮询会兜底——但这样
+	// pending 表的下标能立刻回收，语义也更明确。
+	for index, w := range rsm.pending {
+		if index <= msg.SnapshotIndex {
+			w.ch <- opResult{err: rpc.ErrWrongLeader}
+			delete(rsm.pending, index)
+		}
+	}
+	rsm.mu.Unlock()
+}
+
+// maybeSnapshot 记录 index 已执行，并在 Raft 状态超过阈值时建快照、裁剪日志。
+// maxraftstate 为 -1 表示不需要快照。
+func (rsm *RSM) maybeSnapshot(index int) {
+	rsm.mu.Lock()
+	rsm.lastApplied = index
+	last := rsm.lastApplied
+	rsm.mu.Unlock()
+
+	if rsm.maxraftstate == -1 || rsm.rf.PersistBytes() <= rsm.maxraftstate {
+		return
+	}
+
+	// 两步都在锁外：sm.Snapshot 要拿状态机自己的锁并序列化整个状态，rf.Snapshot
+	// 还要把快照和 raft 状态落盘，持着 rsm.mu 做这些会让所有 Submit 一起卡住。
+	//
+	// 传给 rf.Snapshot 的必须是状态机的下标 last，不是 rf 的 applyIndex——见
+	// lastApplied 字段上方的注释。last 之前的状态确实都被执行过了，所以由它
+	// 裁剪出来的日志是安全的。
+	data := rsm.sm.Snapshot()
+	rsm.rf.Snapshot(last, data)
 }
 
 // MakeRSM 创建并返回一个 RSM 实例。
@@ -143,6 +210,17 @@ func MakeRSM(servers []*labrpc.ClientEnd, me int, persister *tester.Persister, m
 	if !tester.UseRaftStateMachine {
 		rsm.rf = raft.Make(servers, me, persister, rsm.applyCh)
 	}
+
+	// 重启后状态机的唯一真相来源就是 persister 里的快照：raft.Make 不会把它经
+	// applyCh 发出来（那时读者还没起来，同步发送会把 Make 自己卡死），它只把
+	// commitIndex/applyIndex 直接抬到 lastIncludeIndex。
+	//
+	// 必须在启动 reader 之前完成：否则 reader 会把新提交的命令先执行在空状态机上，
+	// 对 KV 服务来说就是 Put 莫名返回 ErrNoKey、Get 丢数据。
+	if data := persister.ReadSnapshot(); len(data) > 0 {
+		rsm.sm.Restore(data)
+	}
+
 	go rsm.reader()
 	return rsm
 }
