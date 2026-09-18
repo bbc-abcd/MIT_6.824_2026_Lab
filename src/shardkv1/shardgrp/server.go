@@ -1,75 +1,71 @@
 package shardgrp
 
 import (
-
 	"6.5840/kvraft1/rsm"
 	"6.5840/kvsrv1/rpc"
 	"6.5840/labgob"
 	"6.5840/labrpc"
 	"6.5840/shardkv1/shardgrp/shardrpc"
-	"6.5840/tester1"
+	tester "6.5840/tester1"
 )
 
 const (
 	ENVKEY = "65840ENV"
 )
 
-
 type KVServer struct {
 	me  int
 	rsm *rsm.RSM
 	gid tester.Tgid
 
-	// Your code here
+	// 你的代码放在这里
 }
 
-
 func (kv *KVServer) DoOp(req any) any {
-	// Your code here
+	// 你的代码放在这里
 	return nil
 }
 
-
 func (kv *KVServer) Snapshot() []byte {
-	// Your code here
+	// 你的代码放在这里
 	return nil
 }
 
 func (kv *KVServer) Restore(data []byte) {
-	// Your code here
+	// 你的代码放在这里
 }
 
 func (kv *KVServer) Get(args *rpc.GetArgs, reply *rpc.GetReply) {
-	// Your code here
+	// 你的代码放在这里
 }
 
 func (kv *KVServer) Put(args *rpc.PutArgs, reply *rpc.PutReply) {
-	// Your code here
+	// 你的代码放在这里
 }
 
-// Freeze the specified shard (i.e., reject future Get/Puts for this
-// shard) and return the key/values stored in that shard.
+// 冻结指定的分片（即拒绝未来针对该分片的 Get/Put 操作），
+// 并返回该分片中存储的键/值。
 func (kv *KVServer) FreezeShard(args *shardrpc.FreezeShardArgs, reply *shardrpc.FreezeShardReply) {
-	// Your code here
+	// 你的代码放在这里
 }
 
-// Install the supplied state for the specified shard.
+// 为指定的分片安装所提供的状态。
 func (kv *KVServer) InstallShard(args *shardrpc.InstallShardArgs, reply *shardrpc.InstallShardReply) {
-	// Your code here
+	// 你的代码放在这里
 }
 
-// Delete the specified shard.
+// 删除指定的分片。
 func (kv *KVServer) DeleteShard(args *shardrpc.DeleteShardArgs, reply *shardrpc.DeleteShardReply) {
-	// Your code here
+	// 你的代码放在这里
 }
 
-// StartShardServerGrp starts a server for shardgrp `gid`.
+// StartShardServerGrp 为分片组 `gid` 启动一个服务器。
 //
-// StartShardServerGrp() and MakeRSM() must return quickly, so they should
-// start goroutines for any long-running work.
+// StartShardServerGrp() 和 MakeRSM() 必须快速返回，因此它们应为
+// 任何长时间运行的工作启动 goroutine。
 func StartServerShardGrp(servers []*labrpc.ClientEnd, gid tester.Tgid, me int, persister *tester.Persister, maxraftstate int) []any {
-	// call labgob.Register on structures you want
-	// Go's RPC library to marshall/unmarshall.
+	// 对你希望 Go 的 RPC 库
+	// 进行编组/解组的结构体调用 labgob.Register。
 	labgob.Register(rpc.PutArgs{})
 	labgob.Register(rpc.GetArgs{})
 	labgob.Register(shardrpc.FreezeShardArgs{})
@@ -80,7 +76,7 @@ func StartServerShardGrp(servers []*labrpc.ClientEnd, gid tester.Tgid, me int, p
 	kv := &KVServer{gid: gid, me: me}
 	kv.rsm = rsm.MakeRSM(servers, me, persister, maxraftstate, kv)
 
-	// Your code here
+	// 你的代码放在这里
 
 	return []any{kv, kv.rsm.Raft()}
 }
