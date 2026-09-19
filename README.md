@@ -6,7 +6,7 @@
 
 - [课程主页](https://pdos.csail.mit.edu/6.824/index.html)
 - [课程信息与安排](https://pdos.csail.mit.edu/6.824/general.html)
-- [课程实验 Git 仓库](git://g.csail.mit.edu/6.5840-golabs-2026)
+- 课程实验 Git 仓库: git://g.csail.mit.edu/6.5840-golabs-2026
 
 ## 实验内容
 
