@@ -145,18 +145,29 @@ func (ck *Clerk) Put(key string, value string, version rpc.Tversion) rpc.Err {
 
 // FreezeShard 冻结一个分片并取回它的数据。ErrStale 意味着本组已经见过更大
 // 的 Num，调用者是个被取代的旧控制器，应当放弃这次配置变更。
+//
+// 扫完一圈没有任何服务器应答时返回 ErrUnreachable，而不是继续原地重试：
+// 调用者（控制器）需要知道"没拿到答复"，才能判断是该再试一次、还是这次
+// 搬运已经由别人做完了、对应的组也随之消失。这里的三个方法都是同一个形状。
 func (ck *Clerk) FreezeShard(s shardcfg.Tshid, num shardcfg.Tnum) ([]byte, rpc.Err) {
 	args := shardrpc.FreezeShardArgs{Shard: s, Num: num}
 
 	for {
+		reached := false
 		for i := 0; i < len(ck.servers); i++ {
 			j := (ck.leader + i) % len(ck.servers)
 			var reply shardrpc.FreezeShardReply
-			if ck.Call(ck.servers[j], "KVServer.FreezeShard", &args, &reply) &&
-				(reply.Err == rpc.OK || reply.Err == shardrpc.ErrStale) {
+			if !ck.Call(ck.servers[j], "KVServer.FreezeShard", &args, &reply) {
+				continue
+			}
+			reached = true
+			if reply.Err == rpc.OK || reply.Err == shardrpc.ErrStale {
 				ck.leader = j
 				return reply.State, reply.Err
 			}
+		}
+		if !reached {
+			return nil, shardrpc.ErrUnreachable
 		}
 		time.Sleep(retryDelay)
 	}
@@ -166,14 +177,21 @@ func (ck *Clerk) InstallShard(s shardcfg.Tshid, state []byte, num shardcfg.Tnum)
 	args := shardrpc.InstallShardArgs{Shard: s, State: state, Num: num}
 
 	for {
+		reached := false
 		for i := 0; i < len(ck.servers); i++ {
 			j := (ck.leader + i) % len(ck.servers)
 			var reply shardrpc.InstallShardReply
-			if ck.Call(ck.servers[j], "KVServer.InstallShard", &args, &reply) &&
-				(reply.Err == rpc.OK || reply.Err == shardrpc.ErrStale) {
+			if !ck.Call(ck.servers[j], "KVServer.InstallShard", &args, &reply) {
+				continue
+			}
+			reached = true
+			if reply.Err == rpc.OK || reply.Err == shardrpc.ErrStale {
 				ck.leader = j
 				return reply.Err
 			}
+		}
+		if !reached {
+			return shardrpc.ErrUnreachable
 		}
 		time.Sleep(retryDelay)
 	}
@@ -183,14 +201,21 @@ func (ck *Clerk) DeleteShard(s shardcfg.Tshid, num shardcfg.Tnum) rpc.Err {
 	args := shardrpc.DeleteShardArgs{Shard: s, Num: num}
 
 	for {
+		reached := false
 		for i := 0; i < len(ck.servers); i++ {
 			j := (ck.leader + i) % len(ck.servers)
 			var reply shardrpc.DeleteShardReply
-			if ck.Call(ck.servers[j], "KVServer.DeleteShard", &args, &reply) &&
-				(reply.Err == rpc.OK || reply.Err == shardrpc.ErrStale) {
+			if !ck.Call(ck.servers[j], "KVServer.DeleteShard", &args, &reply) {
+				continue
+			}
+			reached = true
+			if reply.Err == rpc.OK || reply.Err == shardrpc.ErrStale {
 				ck.leader = j
 				return reply.Err
 			}
+		}
+		if !reached {
+			return shardrpc.ErrUnreachable
 		}
 		time.Sleep(retryDelay)
 	}

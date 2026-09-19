@@ -10,6 +10,19 @@ import (
 // 手头的配置变更（新控制器会把它做完）。
 const ErrStale = rpc.Err("ErrStale")
 
+// ErrUnreachable 表示整组联系不上，本次调用没拿到任何答复。
+//
+// 它**永远不出现在网络上**，只是组 clerk 给控制器的进程内信号。分片组从
+// 不主动回这个错误，判决权在控制器手里：MoveShard 的三个 RPC 都是幂等的，
+// 拿到这个信号之后到底是"再试一次"还是"这件事已经由别人做完了、收工"，
+// 只有手里拿着配置的人才知道。见 ShardCtrler.moveUntilDone。
+//
+// 必须有这条路径：一个已经被测试器杀掉的分片组永远不会再回任何答复，
+// 原地重试会把控制器永久扣住。B/C 部分里控制器会被复制着跑同一段搬运，
+// 而 ExitGroup 恰好紧跟在配置发布之后 —— 重复搬运的 RPC 正好落在这个
+// 窗口里，撞上一个已经消失的组。
+const ErrUnreachable = rpc.Err("ErrUnreachable")
+
 type FreezeShardArgs struct {
 	Shard shardcfg.Tshid
 	Num   shardcfg.Tnum
